@@ -1,0 +1,41 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:15-alpine
+    container_name: medflow_db
+    environment:
+      POSTGRES_DB: medflow
+      POSTGRES_USER: medflow_user
+      POSTGRES_PASSWORD: medflow_secure_password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: medflow_backend
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: postgresql://medflow_user:medflow_secure_password@db:5432/medflow
+      JWT_SECRET: medflow_super_secret_jwt_key_2026
+      MOCK_SMS_MODE: "True"
+    depends_on:
+      - db
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: medflow_frontend
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
+
+volumes:
+  postgres_data:
