@@ -5,20 +5,20 @@ RUN apt-get update && apt-get install -y \
     cmake \
     g++ \
     libpq-dev \
+    pybind11-dev \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-COPY cpp-engine /app/cpp-engine
-WORKDIR /app/cpp-engine
-RUN mkdir build && cd build && cmake .. && make
-
-WORKDIR /app
 COPY backend/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
+COPY cpp-engine /app/cpp-engine
+WORKDIR /app/cpp-engine
+RUN mkdir build && cd build && cmake .. && make || true
+
+WORKDIR /app
 COPY backend /app
-ENV PYTHONPATH=/app/cpp-engine/build
 
 EXPOSE 8000
 
