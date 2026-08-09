@@ -1,4 +1,7 @@
-import React, { useState } from 'react'
+import os
+
+# 1. Updated React App with Multi-Role Login, Notifications, Uploader, Doctor, Admin & Patient Views
+app_tsx_content = """import React, { useState } from 'react'
 import { 
   Cpu, Activity, CheckCircle, AlertTriangle, Clock, Bell, User, Lock, 
   FileText, Upload, ShieldCheck, LogOut, FileUp, CheckSquare, Stethoscope, Search, Download, QrCode 
@@ -311,3 +314,9 @@ export default function App() {
     </div>
   )
 }
+"""
+
+with open("frontend/src/App.tsx", "w", encoding="utf-8") as f:
+    f.write(app_tsx_content)
+
+print("App.tsx updated successfully with Multi-Role Login & Notifications!")
