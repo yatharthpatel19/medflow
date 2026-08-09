@@ -1,4 +1,4 @@
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Depends, Header, Query
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import asyncio
@@ -6,9 +6,9 @@ import time
 import math
 
 app = FastAPI(
-    title="MedFlow - Intelligent Diagnostic Center & Parallel Processing Platform",
-    version="2.0.0",
-    description="Full-stack diagnostic workflow engine backed by C++ Thread Pool, ReportLab PDF, and WebSockets."
+    title="MedFlow Platform API v3.0",
+    version="3.0.0",
+    description="Diagnostic Center Engine with Admin Approval, Digital Prescriptions, and C++ Thread Pool."
 )
 
 app.add_middleware(
@@ -19,83 +19,140 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# --- MOCK USER DATABASE WITH HASHED PASSWORDS & CREDENTIALS ---
-USERS_DB = {
-    "admin@medflow.org": {
-        "id": 1,
-        "email": "admin@medflow.org",
-        "password": "admin123", # Pre-filled for demo
-        "full_name": "System Administrator",
-        "role": "SUPER_ADMIN"
-    },
-    "uploader@medflow.org": {
-        "id": 2,
-        "email": "uploader@medflow.org",
-        "password": "lab123",
-        "full_name": "Suresh Kumar (Lab Tech)",
-        "role": "LAB_STAFF"
-    },
-    "dr.patel@medflow.org": {
-        "id": 3,
-        "email": "dr.patel@medflow.org",
-        "password": "doctor123",
-        "full_name": "Dr. Rajesh Patel",
-        "role": "DOCTOR"
-    },
-    "rahul.sharma@gmail.com": {
-        "id": 4,
-        "email": "rahul.sharma@gmail.com",
-        "password": "patient123",
-        "full_name": "Rahul Sharma",
-        "role": "PATIENT"
-    }
-}
+# --- USER DATABASE WITH STATUS SUPPORT ---
+USERS_DB = [
+    {"id": 1, "email": "admin@medflow.org", "password": "admin123", "full_name": "System Administrator", "role": "SUPER_ADMIN", "status": "ACTIVE"},
+    {"id": 2, "email": "uploader@medflow.org", "password": "lab123", "full_name": "Suresh Kumar (Lab Tech)", "role": "LAB_STAFF", "status": "ACTIVE"},
+    {"id": 3, "email": "dr.patel@medflow.org", "password": "doctor123", "full_name": "Dr. Rajesh Patel", "role": "DOCTOR", "status": "ACTIVE"},
+    {"id": 4, "email": "rahul.sharma@gmail.com", "password": "patient123", "full_name": "Rahul Sharma", "role": "PATIENT", "status": "ACTIVE"},
+    # Pending User Example for Admin Approval Demonstration
+    {"id": 5, "email": "dr.verma@medflow.org", "password": "doc123password", "full_name": "Dr. Anita Verma", "role": "DOCTOR", "status": "PENDING_APPROVAL"},
+    {"id": 6, "email": "tech.priya@medflow.org", "password": "lab123password", "full_name": "Priya Singh (Lab Tech)", "role": "LAB_STAFF", "status": "PENDING_APPROVAL"}
+]
 
+# --- PRESCRIPTIONS DATABASE ---
+PRESCRIPTIONS_DB = [
+    {
+        "id": "RX-2026-001",
+        "patient_id": "PAT-2026-00124",
+        "patient_name": "Rahul Sharma",
+        "doctor_name": "Dr. Rajesh Patel",
+        "report_id": "RPT-2026-001245",
+        "medicines": [
+            {"name": "Vitamin D3 60K", "dosage": "1 Capsule", "frequency": "Once Weekly after meal", "duration": "4 Weeks"},
+            {"name": "Multivitamin Complex", "dosage": "1 Tablet", "frequency": "Once Daily at bedtime", "duration": "30 Days"}
+        ],
+        "notes": "Hemoglobin level is optimal. Maintain high-protein diet and stay hydrated.",
+        "date": "Aug 09, 2026"
+    }
+]
+
+# --- REQUEST MODELS ---
 class LoginRequest(BaseModel):
     email: str
     password: str
 
-class TestOrderRequest(BaseModel):
-    patient_name: str
-    patient_id: str
-    doctor_name: str
-    test_category: str
-    hemoglobin: float
-    wbc: float
-    platelets: float
+class RegisterRequest(BaseModel):
+    full_name: str
+    email: str
+    password: str
+    role: str
 
-# --- AUTHENTICATION ENDPOINTS ---
+class ApproveRequest(BaseModel):
+    user_id: int
+
+class PrescriptionRequest(BaseModel):
+    patient_id: str
+    patient_name: str
+    doctor_name: str
+    report_id: str
+    medicine_name: str
+    dosage: str
+    frequency: str
+    notes: str
+
+# --- AUTHENTICATION API ---
 @app.post("/api/auth/login")
 def login(data: LoginRequest):
-    user = USERS_DB.get(data.email.lower())
+    user = next((u for u in USERS_DB if u["email"].lower() == data.email.lower()), None)
     if not user or user["password"] != data.password:
         raise HTTPException(status_code=401, detail="Invalid email or password")
     
+    if user["status"] == "PENDING_APPROVAL":
+        raise HTTPException(status_code=403, detail="Your account is pending Super Admin approval. Please try again later.")
+    
+    if user["status"] == "REJECTED":
+        raise HTTPException(status_code=403, detail="Account registration request was rejected by Administrator.")
+
     return {
-        "access_token": f"medflow_jwt_token_{user['role']}_{user['id']}",
-        "token_type": "bearer",
-        "user": {
-            "id": user["id"],
-            "email": user["email"],
-            "full_name": user["full_name"],
-            "role": user["role"]
-        }
+        "access_token": f"jwt_token_{user['role']}_{user['id']}",
+        "user": user
     }
 
-# --- DIAGNOSTIC TEST CATALOG ---
-@app.get("/api/tests")
-def get_test_catalog():
-    return [
-        {"id": "TEST-01", "name": "CBC (Complete Blood Count)", "category": "Hematology", "price": 450, "time": "2 Hours", "ref": "Hb: 13-17 g/dL, WBC: 4000-11000"},
-        {"id": "TEST-02", "name": "Lipid Profile", "category": "Biochemistry", "price": 850, "time": "4 Hours", "ref": "Cholesterol: <200 mg/dL"},
-        {"id": "TEST-03", "name": "HbA1c (Glycated Hemoglobin)", "category": "Endocrinology", "price": 600, "time": "3 Hours", "ref": "HbA1c: <5.7%"},
-        {"id": "TEST-04", "name": "Thyroid Profile (T3, T4, TSH)", "category": "Endocrinology", "price": 950, "time": "5 Hours", "ref": "TSH: 0.4-4.0 mIU/L"},
-        {"id": "TEST-05", "name": "Liver Function Test (LFT)", "category": "Biochemistry", "price": 1100, "time": "6 Hours", "ref": "ALT: 7-56 U/L, AST: 10-40 U/L"}
-    ]
+@app.post("/api/auth/register")
+def register(data: RegisterRequest):
+    if any(u["email"].lower() == data.email.lower() for u in USERS_DB):
+        raise HTTPException(status_code=400, detail="User email already registered")
+    
+    # Auto-approve Patients, require Admin Approval for Doctors & Lab Staff
+    status = "ACTIVE" if data.role == "PATIENT" else "PENDING_APPROVAL"
+    new_id = len(USERS_DB) + 1
+    new_user = {
+        "id": new_id,
+        "email": data.email,
+        "password": data.password,
+        "full_name": data.full_name,
+        "role": data.role,
+        "status": status
+    }
+    USERS_DB.append(new_user)
+    return {"message": "Registration successful", "user": new_user}
 
-# --- BENCHMARK & BULK JOB GENERATOR ---
+# --- ADMIN APPROVAL API ---
+@app.get("/api/admin/pending-users")
+def get_pending_users():
+    return [u for u in USERS_DB if u["status"] == "PENDING_APPROVAL"]
+
+@app.post("/api/admin/approve-user")
+def approve_user(data: ApproveRequest):
+    user = next((u for u in USERS_DB if u["id"] == data.user_id), None)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    user["status"] = "ACTIVE"
+    return {"message": f"User {user['full_name']} has been approved successfully!"}
+
+@app.post("/api/admin/reject-user")
+def reject_user(data: ApproveRequest):
+    user = next((u for u in USERS_DB if u["id"] == data.user_id), None)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    user["status"] = "REJECTED"
+    return {"message": f"User {user['full_name']} registration rejected."}
+
+# --- PRESCRIPTION API ---
+@app.get("/api/prescriptions")
+def get_prescriptions():
+    return PRESCRIPTIONS_DB
+
+@app.post("/api/prescriptions/add")
+def create_prescription(data: PrescriptionRequest):
+    rx_id = f"RX-2026-00{len(PRESCRIPTIONS_DB) + 1}"
+    new_rx = {
+        "id": rx_id,
+        "patient_id": data.patient_id,
+        "patient_name": data.patient_name,
+        "doctor_name": data.doctor_name,
+        "report_id": data.report_id,
+        "medicines": [{"name": data.medicine_name, "dosage": data.dosage, "frequency": data.frequency, "duration": "14 Days"}],
+        "notes": data.notes,
+        "date": "Today"
+    }
+    PRESCRIPTIONS_DB.append(new_rx)
+    return {"message": "Prescription created and attached to patient record", "prescription": new_rx}
+
+# --- BENCHMARK & WEBSOCKET ---
 @app.get("/api/benchmark/run")
-def run_benchmark(job_count: int = Query(default=1000)):
+def run_benchmark(job_count: int = 1000):
     t0 = time.perf_counter()
     val = sum(math.sin(i) * math.cos(i) for i in range(min(job_count * 10, 50000)))
     t_seq = time.perf_counter() - t0
@@ -114,11 +171,10 @@ def run_benchmark(job_count: int = Query(default=1000)):
         }
     }
 
-# --- REAL-TIME TELEMETRY WEBSOCKET ---
 @app.websocket("/ws/jobs")
 async def ws_jobs(websocket: WebSocket):
     await websocket.accept()
-    completed_jobs = 1480
+    completed_jobs = 1520
     try:
         while True:
             completed_jobs += 1
@@ -127,7 +183,7 @@ async def ws_jobs(websocket: WebSocket):
                 "data": {
                     "total_workers": 8,
                     "active_workers": 3,
-                    "queue_size": 14,
+                    "queue_size": 12,
                     "total_completed": completed_jobs,
                     "total_failed": 2,
                     "avg_execution_ms": 1.15,
@@ -141,4 +197,4 @@ async def ws_jobs(websocket: WebSocket):
 
 @app.get("/")
 def root():
-    return {"status": "online", "system": "MedFlow C++ Engine Active"}
+    return {"status": "online", "system": "MedFlow v3.0 API Active"}
